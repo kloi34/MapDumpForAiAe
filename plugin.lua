@@ -2,7 +2,9 @@
 
 -- pls finish your maps AiAe
 
--- this is only a temporary plugin that's poorly commented/structured, i think i will integrate this plugin with my lazymapper plugin. in lazymapper, i will implement more features, structure the code a bit better, and add comments to the code
+-- this is only a temporary plugin that's poorly commented/structured, i think i will integrate
+--    this plugin with my lazymapper plugin. in lazymapper, i will implement more features,
+--    structure the code a bit better, and add comments to the code
 
 ---------------------------------------------------------------------------------------------------
 -- Global constants
