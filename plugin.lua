@@ -47,23 +47,15 @@ function menu()
         startTime = 0,
         endTime = 0,
         jumpEveryBeat = false,
-        allowAnchorsAndTrills = false,
-        anchorFrequency = 0,
+        allowTrills = false,
+        trillFrequency = 0,
+        maxTrillLength = 3,
+        allowAnchors = false,
+        statusMessage = "Advice: do not set snap to 1/32"
         -- allowOneHandedTrills = false,
         -- allowLongAnchorsAndTrills = false,
     }
     retrieveStateVariables(vars)
-    
-    imgui.AlignTextToFramePadding()
-    imgui.Text("1 /")
-    imgui.SameLine(0, SAMELINE_SPACING)
-    imgui.PushItemWidth(BUTTON_WIDGET_WIDTH * 1.5)
-    _, vars.beatSnap = imgui.InputInt("Dump Beat Snap", vars.beatSnap)
-    imgui.PopItemWidth()
-    vars.beatSnap = mathClamp(vars.beatSnap, 4, 32)
-  
-    separator()
-    spacing()
     
     if imgui.Button(" Current ", {BUTTON_WIDGET_WIDTH, DEFAULT_WIDGET_HEIGHT}) then
         vars.startTime = state.SongTime
@@ -72,6 +64,7 @@ function menu()
     imgui.PushItemWidth(BUTTON_WIDGET_WIDTH * 2)
     _, vars.startTime = imgui.InputInt("Start time", vars.startTime, 1)
     imgui.PopItemWidth()
+    
     
     spacing()
     
@@ -86,68 +79,171 @@ function menu()
     separator()
     spacing()
     
+    imgui.AlignTextToFramePadding()
+    imgui.Text("1 /")
+    imgui.SameLine(0, SAMELINE_SPACING)
+    imgui.PushItemWidth(BUTTON_WIDGET_WIDTH * 1.5)
+    _, vars.beatSnap = imgui.InputInt("Dump Beat Snap", vars.beatSnap)
+    imgui.PopItemWidth()
+    vars.beatSnap = mathClamp(vars.beatSnap, 6, 32)
+  
+    separator()
+    spacing()
+    
     _, vars.jumpEveryBeat = imgui.Checkbox("Have a jump (2 notes) every beat", vars.jumpEveryBeat)
     
     separator()
     spacing()
     
-    _, vars.allowAnchorsAndTrills = imgui.Checkbox("Allow Anchors and Trills", vars.allowAnchorsAndTrills)
-    if vars.allowAnchorsAndTrills then
+    _, vars.allowTrills = imgui.Checkbox("Allow Trills", vars.allowTrills)
+    if vars.allowTrills then
         spacing()
         imgui.PushItemWidth(BUTTON_WIDGET_WIDTH * 1.5)
-        _, vars.anchorFrequency = imgui.DragInt("Anchor/Trill Frequency",
-                vars.anchorFrequency, 0.2, 0, 100, vars.anchorFrequency.." %%")
-        vars.anchorFrequency = mathClamp(vars.anchorFrequency, 0, 100)
+        _, vars.trillFrequency = imgui.DragInt("Trill Frequency",
+                vars.trillFrequency, 0.2, 0, 100, vars.trillFrequency.." %%")
+        vars.trillFrequency = mathClamp(vars.trillFrequency, 0, 100)
         imgui.PopItemWidth()
         spacing()
+        
+        imgui.PushItemWidth(BUTTON_WIDGET_WIDTH * 1.5)
+        _, vars.maxTrillLength = imgui.InputInt("Max # of notes in trill", vars.maxTrillLength)
+        vars.maxTrillLength = mathClamp(vars.maxTrillLength, 3, 16)
+        imgui.PopItemWidth()
+        spacing()
+        
         --_, vars.allowOneHandedTrills = imgui.Checkbox("Allow One-handed Trills", vars.allowOneHandedTrills)
         --_, vars.allowLongAnchorsAndTrills = imgui.Checkbox("Allow Long Anchors/Trills", vars.allowLongAnchorsAndTrills)
     end
     separator()
     spacing()
     
+    _, vars.allowAnchors = imgui.Checkbox("Allow Anchors", vars.allowAnchors)
+    separator()
+    spacing()
+    
     imgui.Indent(60)
     if imgui.Button("Place dump", {BUTTON_WIDGET_WIDTH * 2, DEFAULT_WIDGET_HEIGHT * 1.2}) then
-        local hitObjectsToPlace = {}
-        local snapCounter = 0
-        local currentOffset = vars.startTime
-        local avoidLanes = {}
-        local availableLanes = {1, 2, 3, 4}
-        
-        while currentOffset < vars.endTime do
-            local randomNum = math.random(0, 99)
-            
-            if vars.allowAnchorsAndTrills and randomNum < vars.anchorFrequency and #avoidLanes == 2 then
-                nowAvailableLanes = table.remove(avoidLanes, 1)
-                for i = 1, #nowAvailableLanes do
-                    table.insert(availableLanes, nowAvailableLanes[i])
-                end
+        local noHitObjectsInRange = true
+        for i, hitObject in pairs(map.HitObjects) do
+            if isWithinRange(hitObject.StartTime, vars.startTime, vars.endTime) then
+                noHitObjectsInRange = false
+                vars.statusMessage = "There are already notes in the time interval, so no notes were placed   :("
+                break
             end
-            
-            local randomIndex1 = math.random(#availableLanes)
-            local lanes = {availableLanes[randomIndex1]}
-            table.insert(hitObjectsToPlace, utils.CreateHitObject(math.floor(currentOffset + 0.5), lanes[1]))
-            table.remove(availableLanes, randomIndex1)
-            table.insert(avoidLanes, lanes)
-            
-            if vars.jumpEveryBeat and snapCounter % vars.beatSnap == 0 then
-                local randomIndex2 = math.random(#availableLanes)
-                table.insert(lanes, availableLanes[randomIndex2])
-                table.insert(hitObjectsToPlace, utils.CreateHitObject(math.floor(currentOffset + 0.5), lanes[2]))
-                table.remove(availableLanes, randomIndex2)
-            end
-            
-            if #avoidLanes > 2 then
-                nowAvailableLanes = table.remove(avoidLanes, 1)
-                for i = 1, #nowAvailableLanes do
-                    table.insert(availableLanes, nowAvailableLanes[i])
-                end
-            end
-            currentOffset = currentOffset + 60000/map.GetTimingPointAt(currentOffset).Bpm/vars.beatSnap
-            snapCounter = snapCounter + 1
         end
-        actions.PlaceHitObjectBatch(hitObjectsToPlace)
+        if noHitObjectsInRange then
+            vars.statusMessage = vars.statusMessage.."not in range"
+            local hitObjectsToPlace = {}
+            local snapCounter = 0
+            local currentOffset = vars.startTime
+            local avoidLanes = {}
+            local availableLanes = {1, 2, 3, 4}
+            local trillNoteLength = 3
+            local lastFewRows = {}
+            local maxAnchors = 3
+            while currentOffset < vars.endTime do
+                local anchorDetected = false
+                local randomNum = math.random(0, 99)
+                local lastFewLaneCounts = countLanes(lastFewRows)
+                local candidateNotAnchorLanes = {}
+                for i = 1, #lastFewLaneCounts do
+                    if lastFewLaneCounts[i] < maxAnchors then
+                        table.insert(candidateNotAnchorLanes, i)
+                    else
+                        anchorDetected = true
+                        maxAnchors = 2
+                    end
+                end
+                if not anchorDetected then
+                    maxAnchors = 3
+                end
+                
+                if vars.allowTrills and trillNoteLength <= vars.maxTrillLength and
+                        randomNum < vars.trillFrequency and #avoidLanes == 2 then
+                    nowAvailableLanes = table.remove(avoidLanes, 1)
+                    for i = 1, #nowAvailableLanes do
+                        table.insert(availableLanes, nowAvailableLanes[i])
+                    end
+                    trillNoteLength = trillNoteLength + 1
+                else
+                    trillNoteLength = 3
+                end
+                
+                local lanes = {}
+                
+                if vars.jumpEveryBeat and snapCounter % vars.beatSnap == 0 then
+                    local randomIndex1 = math.random(#availableLanes)
+                    lanes = {availableLanes[randomIndex1]}
+                    table.insert(hitObjectsToPlace, utils.CreateHitObject(math.floor(currentOffset + 0.5), lanes[1]))
+                    table.remove(availableLanes, randomIndex1)
+                    local randomIndex2 = math.random(#availableLanes)
+                    table.insert(lanes, availableLanes[randomIndex2])
+                    table.insert(hitObjectsToPlace, utils.CreateHitObject(math.floor(currentOffset + 0.5), lanes[2]))
+                    table.remove(availableLanes, randomIndex2)
+                elseif #availableLanes == 1 then
+                    lanes = {availableLanes[1]}
+                    table.insert(hitObjectsToPlace, utils.CreateHitObject(math.floor(currentOffset + 0.5), lanes[1]))
+                    table.remove(availableLanes, 1)
+                elseif not vars.allowAnchors then
+                    local done = false
+                    local availableLanesCopy = {}
+                    for i = 1, #availableLanes do
+                        table.insert(availableLanesCopy, availableLanes[i])
+                    end
+                    while not done do
+                        local randomIndex = math.random(#availableLanesCopy)
+                        local lane = table.remove(availableLanesCopy, randomIndex)
+                        local isCandidateLane = false
+                        for j = 1, #candidateNotAnchorLanes do
+                            if candidateNotAnchorLanes[j] == lane then
+                                isCandidateLane = true
+                            end
+                        end 
+                        if #availableLanesCopy == 0 or isCandidateLane then
+                            lanes = {lane}
+                            table.insert(hitObjectsToPlace, utils.CreateHitObject(math.floor(currentOffset + 0.5), lane))
+                            for k = 1, #availableLanes do
+                                if availableLanes[k] == lane then
+                                    table.remove(availableLanes, k)
+                                end
+                            end
+                            done = true
+                        end
+                    end
+                else
+                    local randomIndex1 = math.random(#availableLanes)
+                    lanes = {availableLanes[randomIndex1]}
+                    table.insert(hitObjectsToPlace, utils.CreateHitObject(math.floor(currentOffset + 0.5), lanes[1]))
+                    table.remove(availableLanes, randomIndex1)
+                end
+                
+                table.insert(avoidLanes, lanes)
+                table.insert(lastFewRows, lanes)
+                while #lastFewRows > maxAnchors * 3 do
+                    table.remove(lastFewRows, 1)
+                end
+                
+                if #avoidLanes > 2 then
+                    nowAvailableLanes = table.remove(avoidLanes, 1)
+                    for i = 1, #nowAvailableLanes do
+                        table.insert(availableLanes, nowAvailableLanes[i])
+                    end
+                end
+                currentOffset = currentOffset + 60000/map.GetTimingPointAt(currentOffset).Bpm/vars.beatSnap
+                snapCounter = snapCounter + 1
+            end
+            actions.PlaceHitObjectBatch(hitObjectsToPlace)
+            if #hitObjectsToPlace > 0 then
+                vars.statusMessage = "Notes successfully placed!   :)"
+            else
+                vars.statusMessage = "No notes placed   :("
+            end
+        end
     end
+    separator()
+    spacing()
+    imgui.Unindent(60)
+    imgui.TextWrapped(vars.statusMessage)
     
     saveStateVariables(vars)
     imgui.End()
@@ -184,6 +280,27 @@ function mathClamp(number, lowerBound, upperBound)
     else
         return number
     end
+end
+
+-- Returns whether a number is within a given range
+-- Parameters
+--    x          : number in question
+--    lowerBound : upper bound of the range
+--    upperBound : lower bound of the range
+function isWithinRange(x, lowerBound, upperBound)
+    return x >= lowerBound and x <= upperBound
+end
+
+function countLanes(lastFewRows)
+    local laneCounts = {0,0,0,0}
+    for i = 1, #lastFewRows do
+        local lanes = lastFewRows[i]
+        for j = 1, #lanes do
+            local lane = lanes[j]
+            laneCounts[lane] = laneCounts[lane] + 1
+        end
+    end
+    return laneCounts
 end
 
 -- Adds a thin horizontal line separator on the GUI
